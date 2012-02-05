@@ -10,7 +10,7 @@
 
 @interface AStarPathFinder (Private)
     - (AStarNode *)lowestCostNode;
-    - (AStarNode *) findShortestPathFrom:(CGPoint)origTileCoord to:(CGPoint)destTileCoord withDirection:(CharacterDirection) startingDirection;
+    - (AStarNode *)findShortestPathFrom:(CGPoint)origTileCoord to:(CGPoint)destTileCoord withDirection:(CharacterDirection) startingDirection;
     
 @end
 
@@ -22,8 +22,7 @@
     if (self) {
         tiledMap = [map retain];
         collisionLayer = [layer retain];
-        //SHERVIN: Find a better Capacity value to prevent resizing
-        openNodes = [[NSMutableSet alloc] initWithCapacity:16];
+        openNodes = [[NSMutableSet alloc] initWithCapacity:32];
         closedNodes = [[NSMutableSet alloc] initWithCapacity:32];
         collisionKey = kMapCollidableProperty;
         collisionValue = kMapTrue;
@@ -57,12 +56,12 @@
     
     AStarNode *closestNode = nil;
     
-    while ([openNodes count]) {
+    while ([openNodes count] > 0) {
         //Grab lowest f costing node
         closestNode = [self lowestCostNode];
         
         //if lowest costing node is the destination, then we are done
-        if(closestNode.point.x == destTileCoord.x && closestNode.point.y == destTileCoord.y) {
+        if(CGPointEqualToPoint(closestNode.point, destTileCoord)) {
             return closestNode;
         }
         
@@ -76,6 +75,8 @@
             int y = adjacentTiles[i][1];
             CharacterDirection newDirection = i;
             
+            
+            //Ignore the square which puts us in the opposite direction
             if (closestNode.direction == kDirectionUp && y == 1) {
                 continue;
             }
@@ -220,8 +221,6 @@
 {
     self.point = newPoint;
     self.direction = newDirection;
-//    x = newPoint.x;
-//    y = newPoint.y;
     
     return self;
 }
@@ -245,20 +244,17 @@
 
 - (BOOL)isEqual:(id)otherObject
 {
-    
     if (![otherObject isKindOfClass:[self class]])
     {
         return NO;
     }
-    
-    
-    AStarNode *otherNode = (AStarNode*) otherObject;
-    
-    if (point.x == otherNode.point.x && point.y == otherNode.point.y && direction == otherNode.direction)
-    {
-        return YES;
+    else {
+        AStarNode *otherNode = (AStarNode*) otherObject;
+        if (CGPointEqualToPoint(point, otherNode.point) && direction == otherNode.direction)
+        {
+            return YES;
+        }
     }
-    
     return NO;
 }
 

@@ -35,8 +35,8 @@
 +(CCScene *)scene;
 
 @property (nonatomic,retain) Map *gameMap;
-@property (nonatomic,readonly,retain) CCMenuItem *upButton;
-@property (nonatomic,readonly,retain) CCMenuItem *leftButton;
-@property (nonatomic,readonly,retain) CCMenuItem *rightButton;
-@property (nonatomic,readonly,retain) CCMenuItem *downButton;
+@property (nonatomic,readonly,assign) CCMenuItem *upButton;
+@property (nonatomic,readonly,assign) CCMenuItem *leftButton;
+@property (nonatomic,readonly,assign) CCMenuItem *rightButton;
+@property (nonatomic,readonly,assign) CCMenuItem *downButton;
 @end

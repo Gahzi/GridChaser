@@ -10,14 +10,14 @@
 
 @implementation AIDirector
 
-@synthesize elapsedTime,gameplayLayerDelegate;
+@synthesize elapsedTime, timeUntilSpawn, gameplayLayerDelegate;
 
 - (id)init
 {
     self = [super init];
     if (self) {
         elapsedTime = 0.0;
-        hasSpawned = NO;
+        timeUntilSpawn = arc4random() % 15;
     }
     
     return self;
@@ -32,18 +32,15 @@
 -(void)updateWithDeltaTime:(ccTime)deltaTime andArrayOfGameObjects:(CCArray*)arrayOfGameObjects 
 {
     elapsedTime += deltaTime;
+    timeUntilSpawn -= deltaTime;
     
-    if ((int)elapsedTime % 30 == 0 && !hasSpawned) {
-        #if GRID_CHASER_DEBUG_MODE
-            CCLOG(@"Spawn a new car at: %f",elapsedTime);
-        #endif
-        [gameplayLayerDelegate addGameObject:kGameObjectEnemyCar];
-        hasSpawned = YES;
+    if (timeUntilSpawn <= 0) {
+#if GRID_CHASER_DEBUG_MODE
+        CCLOG(@"Spawn a new car at: %f",elapsedTime);
+#endif
+        [gameplayLayerDelegate addGameObjectWithType:kGameObjectEnemyCar withTileCoord:ccp(-1, -1)];
+        timeUntilSpawn = arc4random() % 15;
     }
-    else if((int)elapsedTime % 30 != 0) {
-        hasSpawned = NO;
-    }
-    
 }
 
 @end

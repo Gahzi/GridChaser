@@ -15,7 +15,6 @@
 #define kTurnLimit 2
 
 @interface PlayerCar : GameCharacter <CCTargetedTouchDelegate> {
-    CGPoint lastTurnedTileCoord;
     CharacterDirection attemptedTurnDirection;
     BOOL isLaneChanging;
     PlayerState state;
@@ -28,7 +27,6 @@
     CCMenuItem *lastPressedButton;
 }
 
-@property (nonatomic,readwrite,assign) CGPoint lastTurnedTileCoord;
 @property (nonatomic,readwrite,assign) CharacterDirection attemptedTurnDirection;
 @property (nonatomic,readwrite,assign) PlayerState state;
 @property (nonatomic,readwrite,assign) id<GameplayLayerDelegate> gameplayLayerDelegate;

@@ -21,8 +21,8 @@
 - (BOOL) isCollidableWithTileCoord:(CGPoint)tileCoord;
 - (BOOL) isPathValid:(NSMutableArray *)path;
 - (CGPoint) tileCoordForPosition:(CGPoint)position;
-- (NSMutableArray*) getPathPointsFrom:(CGPoint)origin to:(CGPoint)destination withDirection:(CharacterDirection) startingDirection; 
-- (CGPoint) centerPositionFromTileCoord:(CGPoint)position;
+- (NSMutableArray*) getPathPointsFrom:(CGPoint)origTileCoord to:(CGPoint)destTileCoord withDirection:(CharacterDirection) startingDirection; 
+- (CGPoint) centerPositionFromTileCoord:(CGPoint)tileCoord;
 
 @property (nonatomic,assign) CCTMXLayer *backgroundLayer;
 @property (nonatomic,assign) CCTMXLayer *collisionLayer;

@@ -52,6 +52,10 @@
     leftButton = nil;
     rightButton = nil;
     downButton = nil;
+    
+#if CC_ENABLE_PROFILERS
+    [updateLoopProfiler release];
+#endif
 }
 
 // on "init" you need to initialize your instance
@@ -61,18 +65,13 @@
 	// Apple recommends to re-assign "self" with the "super" return value
 	if( (self=[super init])) {
         self.isTouchEnabled = YES;
-        //self.isAccelerometerEnabled = YES;
         
-        #if CC_ENABLE_PROFILERS
+#if CC_ENABLE_PROFILERS
         updateLoopProfiler = [[CCProfiler timerWithName:@"updateProfiler" andInstance:self] retain];
-        #endif
-        
-        [[UIAccelerometer sharedAccelerometer] setUpdateInterval: (1.0 / 60)];
+#endif
         
         [[CCSpriteFrameCache sharedSpriteFrameCache] addSpriteFramesWithFile:kSpriteSheetPlist];
-        
-        //SHERVIN: Give a better capacity value to prevent unneccessary resizing.
-        spriteBatchNode = [[CCSpriteBatchNode alloc] initWithFile:kSpriteSheetImage capacity:0];
+        spriteBatchNode = [[CCSpriteBatchNode alloc] initWithFile:kSpriteSheetImage capacity:32];
         
         gameMap = [[Map alloc] init];
         
@@ -94,6 +93,7 @@
         
         NSMutableDictionary *spawnPoint = [objects objectNamed:kMapObjectSpawnPoint1];
         NSAssert(spawnPoint != nil, @"SpawnPoint object not found");
+        
         int x = [[spawnPoint valueForKey:@"x"] intValue];
         int y = [[spawnPoint valueForKey:@"y"] intValue];
         player.position = CGPointMake(x, y);
@@ -105,7 +105,7 @@
         guiMenu = [CCMenu menuWithItems:leftButton,rightButton,upButton,downButton, nil];
         guiMenu.position = CGPointZero;
         
-        [self addGameObject:kGameObjectMarker];
+        [self addGameObjectWithType:kGameObjectMarker withTileCoord:ccp(-1, -1)];
         
         [spriteBatchNode addChild:player z:kGameObjectZValue tag:kPlayerCarTag];
         [self addChild:spriteBatchNode z:2];
@@ -143,16 +143,16 @@
 {
     CGSize winSize = [[CCDirector sharedDirector] winSize];
     
-    #if CC_ENABLE_PROFILERS
-        CCProfilingBeginTimingBlock(updateLoopProfiler);
-    #endif
+#if CC_ENABLE_PROFILERS
+    CCProfilingBeginTimingBlock(updateLoopProfiler);
+#endif
     
     CCArray *listOfGameObjects = [spriteBatchNode children];
     for (GameCharacter *tempChar in listOfGameObjects) {
         [tempChar updateWithDeltaTime:deltaTime andArrayOfGameObjects:listOfGameObjects];
     }
     
-    //[director updateWithDeltaTime:deltaTime andArrayOfGameObjects:listOfGameObjects];
+    [director updateWithDeltaTime:deltaTime andArrayOfGameObjects:listOfGameObjects];
     
     int x = MAX(player.position.x, winSize.width * 0.5);
     int y = MAX(player.position.y, winSize.height * 0.5);
@@ -169,37 +169,19 @@
     
     guiMenu.position = ccpNeg(viewPoint);    
     
-    #if CC_ENABLE_PROFILERS
-        CCProfilingEndTimingBlock(updateLoopProfiler);
-    #endif
+#if CC_ENABLE_PROFILERS
+    CCProfilingEndTimingBlock(updateLoopProfiler);
+#endif
 }
 
-#define kFilteringFactor 0.1
-- (void)accelerometer:(UIAccelerometer*)accelerometer didAccelerate:(UIAcceleration*)acceleration{
-    static float prevX=0, prevY=0, prevZ=0;
-    
-    float accelX = acceleration.x - ( (acceleration.x * kFilteringFactor) + (prevX * (1.0 - kFilteringFactor)) );
-    float accelY = acceleration.y - ( (acceleration.y * kFilteringFactor) + (prevY * (1.0 - kFilteringFactor)) );
-    float accelZ = acceleration.z - ( (acceleration.z * kFilteringFactor) + (prevZ * (1.0 - kFilteringFactor)) );
-    
-    if (accelY > 0.20) {
-        player.direction = kDirectionRight;
-    }
-    else if(accelY < -0.20) {
-        player.direction = kDirectionLeft;
-    }    
-    //CCLOG(@"accelY: %f",accelY);
-    
-    prevX = accelX;
-    prevY = accelY;
-    prevZ = accelZ;
-}
-
-- (void) addGameObject:(GameObjectType)type 
+- (void) addGameObjectWithType:(GameObjectType)type withTileCoord:(CGPoint)tileCoord
 {
+    CGSize winSize = [[CCDirector sharedDirector] winSize];
+    
     if(type == kGameObjectMarker) {
         CGPoint newMarkerTileCoord = ccp(-1, -1);
         while ([gameMap isCollidableWithTileCoord:newMarkerTileCoord]) {
+            
             int x = arc4random() % (int)gameMap.mapSize.width;
             int y = arc4random() % (int)gameMap.mapSize.height;
             newMarkerTileCoord = ccp(x, y);
@@ -214,16 +196,92 @@
         
         [spriteBatchNode addChild:newMarker];
     }
-    else if(type == kGameObjectEnemyCar) {
-        EnemyCar *enemy = [EnemyCar spriteWithSpriteFrameName:kEnemyCarImage];
-        enemy.mapDelegate = gameMap;
-        enemy.state = kStatePatrolling;
+    else if(type == kGameObjectEnemyCar) {        
+        //look for a different direction to spawn in
+        //3 options: behind player or sides
         
-        CGPoint spawnPoint = [gameMap centerPositionFromTileCoord:CGPointMake(25, 4)];
-        enemy.position = spawnPoint;
-        enemy.direction = kDirectionUp;
+        //randomize where the player will spawn?
+        //check that new spawnpoint is okay.
         
-        [spriteBatchNode addChild:enemy z:kGameObjectZValue tag:kEnemyCarTag];
+        //decide which direction we are going to spawn in
+        //begin scanning perpendicularly from that direction to find a piece of open road
+        //spawn car in open road
+        
+        CGPoint spawnPoint = ccp(-1, -1);
+        CGFloat xMapSize = winSize.width / gameMap.tileSize.width;
+        CGFloat yMapSize = winSize.height / gameMap.tileSize.height;
+        
+        CharacterDirection spawnDirection = player.direction;
+        spawnPoint = player.tileCoordinate;
+        
+        NSMutableArray *spawnPoints = [NSMutableArray array];
+            
+        switch (spawnDirection) {
+            case kDirectionUp: {
+                spawnPoint.y = ceilf(spawnPoint.y - yMapSize * 0.75);
+                
+                for (int i = 0; i < xMapSize; i++) {
+                    spawnPoint.x = i;
+                    if (![gameMap isCollidableWithTileCoord:spawnPoint]) {
+                        [spawnPoints addObject:NSStringFromCGPoint(spawnPoint)];
+                    }
+                }
+                break;
+            }
+                
+                    
+            case kDirectionRight: {
+                spawnPoint.x = ceilf(spawnPoint.x + xMapSize * 0.75);
+                
+                for (int i = 0; i < yMapSize; i++) {
+                    spawnPoint.y = i;
+                    if (![gameMap isCollidableWithTileCoord:spawnPoint]) {
+                        [spawnPoints addObject:NSStringFromCGPoint(spawnPoint)];
+                    }
+                }
+                break;
+            }
+                    
+            case kDirectionDown: {
+                spawnPoint.y = ceilf(spawnPoint.y + yMapSize * 0.75);
+                
+                for (int i = 0; i < xMapSize; i++) {
+                    spawnPoint.x = i;
+                    if (![gameMap isCollidableWithTileCoord:spawnPoint]) {
+                        [spawnPoints addObject:NSStringFromCGPoint(spawnPoint)];
+                    }
+                }
+                break;
+            }
+                
+                    
+            case kDirectionLeft: {
+                spawnPoint.x = ceilf(spawnPoint.x - xMapSize * 0.75);
+                for (int i = 0; i < xMapSize; i++) {
+                    spawnPoint.y = i;
+                    if (![gameMap isCollidableWithTileCoord:spawnPoint]) {
+                        [spawnPoints addObject:NSStringFromCGPoint(spawnPoint)];
+                    }
+                }
+                break;
+            }
+                    
+            default:
+                break;
+        }
+        
+        if (spawnPoints.count > 0) {
+            int indexValue = arc4random() % spawnPoints.count;
+            CCLOG(@"Spawnpoints.count: %d", indexValue);
+            spawnPoint = CGPointFromString([spawnPoints objectAtIndex:indexValue]);
+            spawnPoint = [gameMap centerPositionFromTileCoord:spawnPoint];
+            EnemyCar *enemy = [EnemyCar spriteWithSpriteFrameName:kEnemyCarImage];
+            enemy.mapDelegate = gameMap;
+            enemy.state = kStatePatrolling;
+            enemy.position = spawnPoint;
+            enemy.direction = [enemy getOppositeDirectionFromDirection:player.direction];
+            [spriteBatchNode addChild:enemy z:kGameObjectZValue tag:kEnemyCarTag];
+        }
     }
 }
 

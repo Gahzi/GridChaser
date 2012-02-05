@@ -13,16 +13,11 @@
 #define GRID_CHASER_DEBUG_MODE 0
 #endif
 
-#define kPixelToMetresRatio 32.0 //Pixel to Meters ratio for Box2D
-
 #define kPlayerCarTag 1
 #define kEnemyCarTag 2
 #define kMarkerTag 3
 
 #define kGameObjectZValue 100
-
-#define kEndPointIntersectionWidth 3
-#define kEndPointIntersectionHeight 3
 
 #pragma mark -
 #pragma mark MapLayers
@@ -54,7 +49,7 @@
 typedef enum {
     kStateIdle,
     kStateMoving,
-} PlayerState; // 1
+} PlayerState; 
 
 typedef enum {
     kStatePatrolling,
@@ -62,10 +57,10 @@ typedef enum {
     kStateCreeping,
     kStateChasing,
     kStateAlarmed,
-} EnemyState; //2
+} EnemyState; 
 
 
-//TODO: redesign turn attempt so that it is merged with SuccessRate;
+//SHERVIN: redesign turn attempt so that it is merged with SuccessRate;
 #pragma TurnAttempt
 typedef enum {
     kTurnAttemptPerfect = 5,
@@ -101,7 +96,9 @@ typedef enum {
 #pragma mark AdjacentTiles
 static const int numAdjacentTiles = 4;
 
-//NOTE: adjacent tiles must be defined in correct order
+//SHERVIN: Add a const CGPoint representing ccp(-1,-1) and remove all ccp(-1,-1) calls.
+
+//SHERVIN: adjacent tiles must be defined in correct order
 // Up,Right,Down,Left otherwise pathing will not work correctly.
 // Changes will also have to be made to AStarPathFinder.m ~line 75
 static const int adjacentTiles[4][2] = { 0,-1, 1,0, 0,1, -1,0 };
@@ -109,7 +106,7 @@ static const int adjacentTiles[4][2] = { 0,-1, 1,0, 0,1, -1,0 };
 #pragma mark -
 #pragma mark GameplayLayerDelegate
 @protocol GameplayLayerDelegate
-- (void) addGameObject:(GameObjectType)type;
+- (void) addGameObjectWithType:(GameObjectType)type withTileCoord:(CGPoint)tileCoord;
 @end
 
 #pragma mark - 

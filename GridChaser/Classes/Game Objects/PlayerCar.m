@@ -16,7 +16,7 @@
 
 #define kBaseVelocity 50
 
-@synthesize lastTurnedTileCoord,gameplayLayerDelegate;
+@synthesize gameplayLayerDelegate;
 @synthesize attemptedTurnDirection,state,isLaneChanging;
 @synthesize upButton,leftButton,rightButton,downButton,lastPressedButton;
 
@@ -83,15 +83,8 @@
     return turnAttempt;
 }
 
-- (void)setAttemptedTurnDirection:(CharacterDirection)newDirection
-{
-    attemptedTurnDirection = newDirection;
-}
-
 - (void)setState:(PlayerState)newState
 {
-    targetTile = ccp(-1, -1);
-    
     switch (newState) {
         case kStateIdle:
             velocity = kBaseVelocity;
@@ -110,19 +103,23 @@
 {
     [self updateInput];
     
+    //SHERVIN:Abstract out velocity addition to be in GameCharacter.m
     float newVelocity = velocity + acceleration * deltaTime;
     
-    if (newVelocity < kBaseVelocity) {
+    if (newVelocity > topSpeed) {
+        velocity = topSpeed;
+    }
+    else if (newVelocity < kBaseVelocity) {
         velocity = kBaseVelocity;
     }
     else {
         velocity = newVelocity;
     }
     
-    GameObject *marker = nil;
     CGPoint nextTileCoord = ccp(-1, -1);
     CharacterDirection nextDirection = kDirectionNull;
     
+    GameObject *marker = nil;
     for (GameObject *tempObj in arrayOfGameObjects) {
         if(tempObj.tag == kMarkerTag) {
             marker = (Marker*)tempObj; 
@@ -136,11 +133,12 @@
         if(CGRectIntersectsRect(boundingBox, markerBoundingBox)) {
             [marker setVisible:NO];
             [marker removeFromParentAndCleanup:YES];
-            [gameplayLayerDelegate addGameObject:kGameObjectMarker];
+            [gameplayLayerDelegate addGameObjectWithType:kGameObjectMarker withTileCoord:ccp(-1, -1)];
         }
     }
     
-    switch (state) {
+    switch (state) 
+    {
         case kStateIdle:
         {
             velocity = kBaseVelocity;
@@ -150,15 +148,13 @@
                 nextDirection = [self getDirectionWithTileCoord:nextTileCoord];
                 if (nextDirection != self.direction && nextDirection != kDirectionNull && nextDirection != [self getOppositeDirectionFromDirection:self.direction]) {
                     if ([self attemptTurnWithDirection:nextDirection andDeltaTime:deltaTime] == kTurnAttemptFailed) {
-                        nextTileCoord = [self getNextTileCoordWithTileCoord:self.tileCoordinate andDirection:self.direction];
-                        targetTile = nextTileCoord;
+                        targetTile = [self getNextTileCoordWithTileCoord:self.tileCoordinate andDirection:self.direction];
                         break;
                     }
                     else {
-                        self.state = kStateMoving;
                         self.targetPath = [mapDelegate getPathPointsFrom:self.tileCoordinate to:targetTile withDirection:direction];
-                        nextTileCoord = [self getNextTileCoordWithPath:targetPath];
-                        targetTile = nextTileCoord;
+                        targetTile = [self getNextTileCoordWithPath:targetPath];
+                        self.state = kStateMoving;
                         break;
 
                     }
@@ -173,15 +169,8 @@
                 attemptedTurnDirection = kDirectionNull;
                 nextDirection = [self getDirectionWithTileCoord:nextTileCoord];
                 if (nextDirection != self.direction && nextDirection != kDirectionNull && nextDirection != [self getOppositeDirectionFromDirection:self.direction]) {
-                    if ([self attemptTurnWithDirection:nextDirection andDeltaTime:deltaTime] == kTurnAttemptFailed) {
-                        nextTileCoord = [self getNextTileCoordWithTileCoord:self.tileCoordinate andDirection:self.direction];
-                        targetTile = nextTileCoord;
-                        break;
-                    }
-                    else {
+                    if (!([self attemptTurnWithDirection:nextDirection andDeltaTime:deltaTime] == kTurnAttemptFailed)) {
                         self.targetPath = [mapDelegate getPathPointsFrom:self.tileCoordinate to:targetTile withDirection:direction];
-                        nextTileCoord = [self getNextTileCoordWithPath:targetPath];
-                        targetTile = nextTileCoord;
                         break;
                     }
                 }
@@ -191,32 +180,27 @@
                     isLaneChanging = NO;
                 }
             }
-            else {
-                if(targetPath.count > 0) {
-                    nextTileCoord = [self getNextTileCoordWithPath:targetPath];
-                    targetTile = nextTileCoord;
-                    break;
-                }
-                else {
-                    nextTileCoord = [self getNextTileCoordWithTileCoord:self.tileCoordinate andDirection:direction];
-                    targetTile = nextTileCoord;
-                }
-            }
         }
     }
     
-    if(![mapDelegate isCollidableWithTileCoord:targetTile]) {
-        
+    if(targetPath.count > 0) {
+        targetTile = [self getNextTileCoordWithPath:targetPath];
+    }
+    else if (CGPointEqualToPoint(targetTile, ccp(-1, -1))) {
+        targetTile = [self getNextTileCoordWithTileCoord:self.tileCoordinate andDirection:direction];
+    }
+    
+    if([mapDelegate isCollidableWithTileCoord:targetTile] && self.state != kStateIdle) {
+        self.state = kStateIdle;
+    }
+    else {
         //if we need to change the direction because we turned, then turn;
         nextDirection = [self getDirectionWithTileCoord:targetTile];
         if(nextDirection != self.direction && nextDirection != kDirectionNull && !isLaneChanging) {
             self.direction = nextDirection;
         }
         [self updateSprite];
-        [self moveToPosition:[mapDelegate centerPositionFromTileCoord:targetTile] withDeltaTime:deltaTime];  
-    }
-    else if(self.state != kStateIdle){
-        self.state = kStateIdle;
+        [self moveToTileCoord:targetTile withDeltaTime:deltaTime];
     }
 }
 
@@ -269,85 +253,36 @@
     }
     else if(!isButtonSelected && lastPressedButton != nil) {
         
-        CGPoint adjacentSideTile;
-        CGPoint adjacentForwardTile;
-        CGPoint adjacentBackwardTile;
-        
         if(lastPressedButton == upButton)
         {
-            if (!(direction == kDirectionDown)) {
-                adjacentSideTile = [self getAdjacentTileFromTileCoord:self.tileCoordinate WithDirection:kDirectionUp];
-                adjacentForwardTile = [self getAdjacentTileFromTileCoord:adjacentSideTile WithDirection:direction];
-                adjacentBackwardTile = [self getAdjacentTileFromTileCoord:adjacentSideTile WithDirection:[self getOppositeDirectionFromDirection:direction]];
-                
-                if (![mapDelegate isCollidableWithTileCoord:adjacentSideTile] && 
-                    ![mapDelegate isCollidableWithTileCoord:adjacentForwardTile] && 
-                    ![mapDelegate isCollidableWithTileCoord:adjacentBackwardTile]) {
-                    
-                    isLaneChanging = YES;
-                    targetTile = adjacentForwardTile;
-                }
-                else {
-                    self.attemptedTurnDirection = kDirectionUp;
-                    
-                }
+            isLaneChanging = [self attemptLaneChangeWithDirection:kDirectionUp];
+            
+            if (!isLaneChanging) {
+                self.attemptedTurnDirection = kDirectionUp;
             }
         }
         else if(lastPressedButton == leftButton)
         {
-            adjacentSideTile = [self getAdjacentTileFromTileCoord:self.tileCoordinate WithDirection:kDirectionLeft];
-            adjacentForwardTile = [self getAdjacentTileFromTileCoord:adjacentSideTile WithDirection:direction];
-            adjacentBackwardTile = [self getAdjacentTileFromTileCoord:adjacentSideTile WithDirection:[self getOppositeDirectionFromDirection:direction]];
+            isLaneChanging = [self attemptLaneChangeWithDirection:kDirectionLeft];
             
-            if (!(direction == kDirectionRight)) {
-                if (![mapDelegate isCollidableWithTileCoord:adjacentSideTile] && 
-                    ![mapDelegate isCollidableWithTileCoord:adjacentForwardTile] && 
-                    ![mapDelegate isCollidableWithTileCoord:adjacentBackwardTile]) {
-                    
-                    isLaneChanging = YES;
-                    targetTile = adjacentForwardTile;
-                }
-                else {
-                    self.attemptedTurnDirection = kDirectionLeft;
-                }
+            if (!isLaneChanging) {
+                self.attemptedTurnDirection = kDirectionLeft;
             }
         }
         else if(lastPressedButton == rightButton)
         {
-            adjacentSideTile = [self getAdjacentTileFromTileCoord:self.tileCoordinate WithDirection:kDirectionRight];
-            adjacentForwardTile = [self getAdjacentTileFromTileCoord:adjacentSideTile WithDirection:direction];
-            adjacentBackwardTile = [self getAdjacentTileFromTileCoord:adjacentSideTile WithDirection:[self getOppositeDirectionFromDirection:direction]];
+            isLaneChanging = [self attemptLaneChangeWithDirection:kDirectionRight];
             
-            if (!(direction == kDirectionLeft)) {
-                if (![mapDelegate isCollidableWithTileCoord:adjacentSideTile] && 
-                    ![mapDelegate isCollidableWithTileCoord:adjacentForwardTile] && 
-                    ![mapDelegate isCollidableWithTileCoord:adjacentBackwardTile]) {
-                    
-                    isLaneChanging = YES;
-                    targetTile = adjacentForwardTile;
-                }
-                else {
-                    self.attemptedTurnDirection = kDirectionRight;
-                }
+            if (!isLaneChanging) {
+                self.attemptedTurnDirection = kDirectionRight;
             }
         }
         else if(lastPressedButton == downButton)
         {
-            adjacentSideTile = [self getAdjacentTileFromTileCoord:self.tileCoordinate WithDirection:kDirectionDown];
-            adjacentForwardTile = [self getAdjacentTileFromTileCoord:adjacentSideTile WithDirection:direction];
-            adjacentBackwardTile = [self getAdjacentTileFromTileCoord:adjacentSideTile WithDirection:[self getOppositeDirectionFromDirection:direction]];
+            isLaneChanging = [self attemptLaneChangeWithDirection:kDirectionDown];
             
-            if (!(direction == kDirectionUp)) {
-                if (![mapDelegate isCollidableWithTileCoord:adjacentSideTile] && 
-                    ![mapDelegate isCollidableWithTileCoord:adjacentForwardTile] && 
-                    ![mapDelegate isCollidableWithTileCoord:adjacentBackwardTile]) {
-                    
-                    isLaneChanging = YES;
-                    targetTile = adjacentForwardTile;
-                }
-                else {
-                    self.attemptedTurnDirection = kDirectionDown;
-                }
+            if (!isLaneChanging) {
+                self.attemptedTurnDirection = kDirectionDown;
             }
         }
         lastPressedButton = nil;

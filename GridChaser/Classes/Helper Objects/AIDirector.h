@@ -11,12 +11,13 @@
 #import "Constants.h"
 
 @interface AIDirector : NSObject {
+    float timeUntilSpawn;
     float elapsedTime;
-    BOOL hasSpawned;
     id<GameplayLayerDelegate> gameplayLayerDelegate;
 }
 
 @property (nonatomic,readwrite,assign) float elapsedTime;
+@property (nonatomic,readwrite,assign) float timeUntilSpawn;
 @property (nonatomic,readwrite,assign) id<GameplayLayerDelegate> gameplayLayerDelegate;
 
 -(void)updateWithDeltaTime:(ccTime)deltaTime andArrayOfGameObjects:(CCArray*)arrayOfGameObjects;

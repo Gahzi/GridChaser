@@ -33,7 +33,7 @@
     [targetPath release];
 }
 
--(CGPoint) getAdjacentTileFromTileCoord:(CGPoint)tileCoord WithDirection:(CharacterDirection) dir;
+-(CGPoint) getAdjacentTileCoordFromTileCoord:(CGPoint)tileCoord WithDirection:(CharacterDirection) dir
 {
     CGPoint adjacentTileCoord;
     //SHERVIN: Remove code which relies on adjacentTiles[][] order to work.
@@ -68,10 +68,16 @@
     return adjacentTileCoord;
 }
 
-//SHERVIN:Refactor method to moveToTileCoord
--(void) moveToPosition:(CGPoint)newPosition withDeltaTime:(ccTime)deltaTime
+-(void) moveToTileCoord:(CGPoint)newTileCoord withDeltaTime:(ccTime)deltaTime
 {
-    CGPoint newTileCoord = [self.mapDelegate tileCoordForPosition:newPosition];
+    CGPoint newPosition = [mapDelegate centerPositionFromTileCoord:newTileCoord];
+    
+    if (CGPointEqualToPoint(newTileCoord, ccp(-1, -1))) {
+#if GRID_CHASER_DEBUG_MODE
+        CCLOG(@@"Attempting to move to -1,-1 with %@",NSStringFromClass([self class]);
+#endif
+    }
+    
     if(![self.mapDelegate isCollidableWithTileCoord:newTileCoord]) {
         float deltaDistance = deltaTime * velocity;
         CGPoint moveDifference = ccpSub(newPosition, self.position);
@@ -80,30 +86,72 @@
         CGPoint newLocation;
         
         if(distanceToMove < 1) {
+            targetTile = ccp(-1, -1);
             newLocation = newPosition;
         }
         else {
             CGPoint deltaLocation = ccp(deltaDistance*moveDifference.x/distanceToMove,deltaDistance*moveDifference.y/distanceToMove);
-            #if GRID_CHASER_DEBUG_MODE
-                CCLOG(@"delta.x: %f",deltaDistance*moveDifference.x/distanceToMove);
-                CCLOG(@"delta.y: %f",deltaDistance*moveDifference.y/distanceToMove);
-            #endif
-            
             newLocation = ccpAdd(self.position, deltaLocation);
         }
         self.position = newLocation;
     }
 }
 
+-(void) moveWithPath:(NSMutableArray *)path withDeltaTime:(ccTime)deltaTime
+{
+    //Check to see if path is valid
+    //grab the next position from the path, get the center tile coordinate.
+    CGPoint currentTileCoord = self.tileCoordinate;
+    CGPoint nextTileCoord = CGPointFromString([path objectAtIndex:0]);
+    CGPoint nextPosition = [mapDelegate centerPositionFromTileCoord :nextTileCoord];
+    
+    //check to see if we are not already at the first point
+    if(CGPointEqualToPoint(currentTileCoord,nextTileCoord)) {
+        [path removeObject:NSStringFromCGPoint(nextTileCoord)];
+        
+        if([path count] == 0) {
+            //state = kStateIdle;
+            return;
+        }
+        else {
+            nextTileCoord = CGPointFromString([path objectAtIndex:0]);
+            nextPosition = [mapDelegate centerPositionFromTileCoord:nextTileCoord];
+        }
+    }
+    [self moveToTileCoord:nextTileCoord withDeltaTime:deltaTime];
+}
+
+-(BOOL) attemptLaneChangeWithDirection:(CharacterDirection)newDirection
+{
+    CGPoint adjacentSideTile;
+    CGPoint adjacentForwardTile;
+    CGPoint adjacentBackwardTile;
+    BOOL isLaneChanging = NO;
+    
+    if (!(direction == newDirection || direction == [self getOppositeDirectionFromDirection:newDirection])) {
+        adjacentSideTile = [self getAdjacentTileCoordFromTileCoord:self.tileCoordinate WithDirection:newDirection];
+        adjacentForwardTile = [self getAdjacentTileCoordFromTileCoord:adjacentSideTile WithDirection:direction];
+        adjacentBackwardTile = [self getAdjacentTileCoordFromTileCoord:adjacentSideTile WithDirection:[self getOppositeDirectionFromDirection:direction]];
+        
+        if (![mapDelegate isCollidableWithTileCoord:adjacentSideTile] && 
+            ![mapDelegate isCollidableWithTileCoord:adjacentForwardTile] && 
+            ![mapDelegate isCollidableWithTileCoord:adjacentBackwardTile]) {
+            
+            isLaneChanging = YES;
+            targetTile = adjacentForwardTile;
+        }
+    }
+    return isLaneChanging;
+}
+
 -(CharacterDirection) getDirectionWithTileCoord:(CGPoint) tileCoord
 {
     CharacterDirection nextDirection = kDirectionNull;
     CGPoint tileCoordSub = ccpSub(tileCoord,self.tileCoordinate );
-    #if GRID_CHASER_DEBUG_MODE
-        CCLOG(@"TileCoordSub is %@ - %@ = %@",NSStringFromCGPoint(tileCoord),
-              NSStringFromCGPoint(self.tileCoordinate),
-              NSStringFromCGPoint(tileCoord));
-    #endif
+    
+    if ((tileCoord.x < -1 || tileCoordSub.x > 1) || (tileCoordSub.y < -1 || tileCoordSub.y > 1)) {
+        CCLOG(@"TileCoordSub is %@",NSStringFromCGPoint(tileCoordSub));
+    }
     
     if(tileCoordSub.y <= -1) {
         nextDirection = kDirectionUp;
@@ -141,12 +189,16 @@
                 break;
                 
             case kDirectionNull:
+#if GRID_CHASER_DEBUG_MODE
                 CCLOG(@"Warning: Attempting to get opposite direction of kNullDirection");
+#endif
                 oppositeDirection = kDirectionNull;
                 break;
                 
             default:
+#if GRID_CHASER_DEBUG_MODE
                 CCLOG(@"Warning: Attempting to get opposite direction of a non CharacterDirection object");
+#endif                
                 oppositeDirection = kDirectionNull;
                 break;
         }
@@ -157,12 +209,14 @@
 {
     //This method should update the GameCharacter's sprite
     //based on the direction that the GameCharacter is facing
-    //CCLOG(@"updateSprite should be overridden"); 
+#if GRID_CHASER_DEBUG_MODE
+    CCLOG(@"updateSprite should be overridden");
+#endif
+     
 }
 
 -(CharacterTurnAttempt) attemptTurnWithDirection:(CharacterDirection)newDirection andDeltaTime:(ccTime)deltaTime
 {
-    
     CGPoint nextTileCoord = self.tileCoordinate;
     BOOL isNextTileCollidable = YES;
     int i = 1;
@@ -205,31 +259,30 @@
          targetTile = nextTileCoord;
          return turnAttempt;
      }
-}
+}            
 
 -(CGPoint) getNextTileCoordWithPath:(NSMutableArray *)path
 {
-    CGPoint nextTileCoord = CGPointZero;
+    CGPoint nextTileCoord = ccp(-1, -1);
     
-    if([mapDelegate isPathValid:path]) {
-        //grab the next position from the path, get the center tile coordinate.
-        CGPoint currentTileCoord = self.tileCoordinate;
-        nextTileCoord = CGPointFromString([path objectAtIndex:0]);
+    //grab the next position from the path, get the center tile coordinate.
+    CGPoint currentTileCoord = self.tileCoordinate;
+    nextTileCoord = CGPointFromString([path objectAtIndex:0]);
+    
+    //check to see if we are not already at the first point
+    if(CGPointEqualToPoint(currentTileCoord,nextTileCoord)) {
+        [path removeObject:NSStringFromCGPoint(nextTileCoord)];
         
-        //check to see if we are not already at the first point
-        if(CGPointEqualToPoint(currentTileCoord,nextTileCoord)) {
-            [path removeObject:NSStringFromCGPoint(nextTileCoord)];
-            
-            if([path count] == 0) {
-                return nextTileCoord;
-            }
-            else {
-                nextTileCoord = CGPointFromString([path objectAtIndex:0]);
-            }
+        if([path count] == 0) {
+            return nextTileCoord;
+        }
+        else {
+            nextTileCoord = CGPointFromString([path objectAtIndex:0]);
         }
     }
     return nextTileCoord;
 }
+              
 
 -(CGPoint) getNextTileCoordWithTileCoord:(CGPoint)tileCoord andDirection:(CharacterDirection)dir
 {
@@ -256,32 +309,6 @@
             break;
     }
     return nextTileLocation;
-}
-
--(void) moveWithPath:(NSMutableArray *)path withDeltaTime:(ccTime)deltaTime
-{
-    //Check to see if path is valid
-    if([mapDelegate isPathValid:path]) {
-        //grab the next position from the path, get the center tile coordinate.
-        CGPoint currentTileCoord = self.tileCoordinate;
-        CGPoint nextTileCoord = CGPointFromString([path objectAtIndex:0]);
-        CGPoint nextPosition = [mapDelegate centerPositionFromTileCoord :nextTileCoord];
-        
-        //check to see if we are not already at the first point
-        if(CGPointEqualToPoint(currentTileCoord,nextTileCoord)) {
-            [path removeObject:NSStringFromCGPoint(nextTileCoord)];
-
-            if([path count] == 0) {
-                //state = kStateIdle;
-                return;
-            }
-            else {
-                nextTileCoord = CGPointFromString([path objectAtIndex:0]);
-                nextPosition = [mapDelegate centerPositionFromTileCoord:nextTileCoord];
-            }
-        }
-        [self moveToPosition:nextPosition withDeltaTime:deltaTime];
-    }
 }
 
 -(void) updateWithDeltaTime:(ccTime)deltaTime andArrayOfGameObjects:(CCArray *)arrayOfGameObjects
