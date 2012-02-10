@@ -12,7 +12,6 @@
 #import "Marker.h"
 #import "Constants.h"
 
-#define kTurnLimit 2
 
 @interface PlayerCar : GameCharacter <CCTargetedTouchDelegate> {
     CharacterDirection attemptedTurnDirection;

@@ -10,7 +10,7 @@
 
 @implementation GameCharacter
 
-@synthesize characterHealth,targetTile,targetPath,direction,velocity,acceleration,topSpeed;
+@synthesize characterHealth,targetTile,targetPath,direction,turnLimit,velocity,acceleration,topSpeed;
 
 - (id)init
 {
@@ -23,6 +23,7 @@
         topSpeed = 125;
         characterHealth = 100;
         direction = kDirectionNull;
+        turnLimit = 2;
     }
     return self;
 }
@@ -33,39 +34,19 @@
     [targetPath release];
 }
 
--(CGPoint) getAdjacentTileCoordFromTileCoord:(CGPoint)tileCoord WithDirection:(CharacterDirection) dir
+-(void) updateWithDeltaTime:(ccTime)deltaTime andArrayOfGameObjects:(CCArray *)arrayOfGameObjects
 {
-    CGPoint adjacentTileCoord;
-    //SHERVIN: Remove code which relies on adjacentTiles[][] order to work.
-    switch (dir) {
-        case kDirectionUp:
-        {
-            adjacentTileCoord = ccp(adjacentTiles[kDirectionUp][0],adjacentTiles[kDirectionUp][1]);
-            break;
-        }
-        case kDirectionRight:
-        {
-            adjacentTileCoord = ccp(adjacentTiles[kDirectionRight][0],adjacentTiles[kDirectionRight][1]);
-            break;
-        }
-        case kDirectionDown:
-        {
-            adjacentTileCoord = ccp(adjacentTiles[kDirectionDown][0],adjacentTiles[kDirectionDown][1]);
-            break;
-        }
-        case kDirectionLeft:
-        {
-            adjacentTileCoord = ccp(adjacentTiles[kDirectionLeft][0],adjacentTiles[kDirectionLeft][1]);
-            break;
-        }
-        default:
-        {
-            CCLOG(@"Could not find adjacent tile coord, double check characterDirection given");
-        }
-            break;
-    }
-    adjacentTileCoord = ccpAdd(tileCoord,adjacentTileCoord);
-    return adjacentTileCoord;
+    //OVERLOAD ME
+}
+
+-(void) updateSprite
+{
+    //This method should update the GameCharacter's sprite
+    //based on the direction that the GameCharacter is facing
+#if GRID_CHASER_DEBUG_MODE
+    CCLOG(@"updateSprite should be overridden");
+#endif
+    
 }
 
 -(void) moveToTileCoord:(CGPoint)newTileCoord withDeltaTime:(ccTime)deltaTime
@@ -74,7 +55,7 @@
     
     if (CGPointEqualToPoint(newTileCoord, ccp(-1, -1))) {
 #if GRID_CHASER_DEBUG_MODE
-        CCLOG(@@"Attempting to move to -1,-1 with %@",NSStringFromClass([self class]);
+        CCLOG(@"Attempting to move to -1,-1 with %@",NSStringFromClass([self class]));
 #endif
     }
     
@@ -84,15 +65,8 @@
         float distanceToMove = ccpLength(moveDifference);
         
         CGPoint newLocation;
-        
-        if(distanceToMove < 1) {
-            targetTile = ccp(-1, -1);
-            newLocation = newPosition;
-        }
-        else {
-            CGPoint deltaLocation = ccp(deltaDistance*moveDifference.x/distanceToMove,deltaDistance*moveDifference.y/distanceToMove);
-            newLocation = ccpAdd(self.position, deltaLocation);
-        }
+        CGPoint deltaLocation = ccp(deltaDistance*moveDifference.x/distanceToMove,deltaDistance*moveDifference.y/distanceToMove);
+        newLocation = ccpAdd(self.position, deltaLocation);
         self.position = newLocation;
     }
 }
@@ -121,6 +95,52 @@
     [self moveToTileCoord:nextTileCoord withDeltaTime:deltaTime];
 }
 
+-(void) moveWithDirection:(CharacterDirection)dir withDeltaTime:(ccTime)deltaTime 
+{    
+    if (dir == kDirectionNull) {
+#if GRID_CHASER_DEBUG_MODE
+        CCLOG(@"Attempting to move with null direction");
+        return;
+#endif
+    }
+    
+    float deltaDistance = deltaTime * velocity;
+    CGPoint newPosition;
+    
+    switch (dir) {
+        case kDirectionDown:  {
+            newPosition = ccp(0, deltaDistance); 
+            break;
+        }
+        case kDirectionLeft:{
+            newPosition = ccp(-deltaDistance, 0);
+            break;
+        }
+        case kDirectionRight:  {
+            newPosition = ccp(deltaDistance, 0);  
+            break;
+        }          
+        case kDirectionUp:  {
+            newPosition = ccp(0, -deltaDistance);  
+            break;
+        }          
+        
+        default:
+            break;
+    }
+    
+    newPosition = ccpAdd(self.position, newPosition);
+    
+    if(![self.mapDelegate isCollidableWithTileCoord:[mapDelegate tileCoordForPosition:newPosition]]) {
+    self.position = newPosition;
+    }
+    else {
+        CGPoint newTileCord = [mapDelegate tileCoordForPosition:newPosition];
+        newTileCord = [self getAdjacentTileCoordFromTileCoord:newTileCord WithDirection:[self getOppositeDirectionFromDirection:dir]];
+        [self moveToTileCoord:newTileCord withDeltaTime:deltaTime];
+    }
+}
+
 -(BOOL) attemptLaneChangeWithDirection:(CharacterDirection)newDirection
 {
     CGPoint adjacentSideTile;
@@ -143,15 +163,60 @@
     }
     return isLaneChanging;
 }
+              
+-(CharacterTurnAttempt) attemptTurnWithDirection:(CharacterDirection)newDirection andDeltaTime:(ccTime)deltaTime
+{
+    CGPoint nextTileCoord = self.tileCoordinate;
+    BOOL isNextTileCollidable = YES;
+    int i = 1;
+    
+    while (i <= turnLimit) {
+        nextTileCoord = [self getNextTileCoordWithTileCoord:nextTileCoord andDirection:newDirection];
+        isNextTileCollidable = [mapDelegate isCollidableWithTileCoord:nextTileCoord];
+        
+        if (!isNextTileCollidable) {
+            break;
+        }
+        else {
+            nextTileCoord = [self getNextTileCoordWithTileCoord:self.tileCoordinate andDirection:direction]; 
+            i++;
+        }
+    }
+    
+    if (isNextTileCollidable) {
+        return kTurnAttemptFailed;
+    }
+    else {
+        CGPoint moveDifference = ccpSub(self.position, [mapDelegate centerPositionFromTileCoord:nextTileCoord]);
+        float distanceToMove = ccpLength(moveDifference);
+        
+        CCLOG(@"distanceToMove: %f",distanceToMove);
+        CharacterTurnAttempt turnAttempt;
+        if (distanceToMove < kTurnAttemptPerfect ) {
+            turnAttempt = kTurnAttemptPerfect;
+            CCLOG(@"Perfect!");
+        }
+        else if(distanceToMove < kTurnAttemptGood) {
+            turnAttempt = kTurnAttemptGood;
+            CCLOG(@"Good!");
+        }
+        else if(distanceToMove < kTurnAttemptOkay) {
+            turnAttempt = kTurnAttemptOkay;
+            CCLOG(@"Okay!");
+        }
+        else if(distanceToMove < kTurnAttemptOkay) {
+            turnAttempt = kTurnAttemptPoor;
+            CCLOG(@"Poor!");
+        }
+        targetTile = nextTileCoord;
+        return turnAttempt;
+    }
+}
 
 -(CharacterDirection) getDirectionWithTileCoord:(CGPoint) tileCoord
 {
     CharacterDirection nextDirection = kDirectionNull;
     CGPoint tileCoordSub = ccpSub(tileCoord,self.tileCoordinate );
-    
-    if ((tileCoord.x < -1 || tileCoordSub.x > 1) || (tileCoordSub.y < -1 || tileCoordSub.y > 1)) {
-        CCLOG(@"TileCoordSub is %@",NSStringFromCGPoint(tileCoordSub));
-    }
     
     if(tileCoordSub.y <= -1) {
         nextDirection = kDirectionUp;
@@ -205,61 +270,40 @@
     return oppositeDirection;
 }
 
--(void) updateSprite
+-(CGPoint) getAdjacentTileCoordFromTileCoord:(CGPoint)tileCoord WithDirection:(CharacterDirection) dir
 {
-    //This method should update the GameCharacter's sprite
-    //based on the direction that the GameCharacter is facing
-#if GRID_CHASER_DEBUG_MODE
-    CCLOG(@"updateSprite should be overridden");
-#endif
-     
-}
-
--(CharacterTurnAttempt) attemptTurnWithDirection:(CharacterDirection)newDirection andDeltaTime:(ccTime)deltaTime
-{
-    CGPoint nextTileCoord = self.tileCoordinate;
-    BOOL isNextTileCollidable = YES;
-    int i = 1;
-     
-    while (i <= kTurnLimit) {
-        nextTileCoord = [self getNextTileCoordWithTileCoord:nextTileCoord andDirection:newDirection];
-        isNextTileCollidable = [mapDelegate isCollidableWithTileCoord:nextTileCoord];
-         
-        if (!isNextTileCollidable) {
+    CGPoint adjacentTileCoord;
+    //SHERVIN: Remove code which relies on adjacentTiles[][] order to work.
+    switch (dir) {
+        case kDirectionUp:
+        {
+            adjacentTileCoord = ccp(adjacentTiles[kDirectionUp][0],adjacentTiles[kDirectionUp][1]);
             break;
         }
-        else {
-            nextTileCoord = [self getNextTileCoordWithTileCoord:self.tileCoordinate andDirection:direction]; 
-            i++;
+        case kDirectionRight:
+        {
+            adjacentTileCoord = ccp(adjacentTiles[kDirectionRight][0],adjacentTiles[kDirectionRight][1]);
+            break;
         }
-     }
-     
-     if (isNextTileCollidable) {
-        return kTurnAttemptFailed;
-     }
-     else {
-         CGPoint moveDifference = ccpSub(self.position, [mapDelegate centerPositionFromTileCoord:nextTileCoord]);
-         float distanceToMove = ccpLength(moveDifference);
-         CharacterTurnAttempt turnAttempt;
-         if (distanceToMove < kTurnAttemptPerfect ) {
-             turnAttempt = kTurnAttemptPerfect;
-         }
-         else if(distanceToMove < kTurnAttemptGood) {
-             turnAttempt = kTurnAttemptGood;
-         }
-         else if(distanceToMove < kTurnAttemptOkay) {
-             turnAttempt = kTurnAttemptOkay;
-         }
-         else if(distanceToMove < kTurnAttemptPoor) {
-             turnAttempt = kTurnAttemptPoor;
-         }
-         else if(distanceToMove < kTurnAttemptTerrible) {
-             turnAttempt = kTurnAttemptTerrible;
-         }
-         targetTile = nextTileCoord;
-         return turnAttempt;
-     }
-}            
+        case kDirectionDown:
+        {
+            adjacentTileCoord = ccp(adjacentTiles[kDirectionDown][0],adjacentTiles[kDirectionDown][1]);
+            break;
+        }
+        case kDirectionLeft:
+        {
+            adjacentTileCoord = ccp(adjacentTiles[kDirectionLeft][0],adjacentTiles[kDirectionLeft][1]);
+            break;
+        }
+        default:
+        {
+            CCLOG(@"Could not find adjacent tile coord, double check characterDirection given");
+        }
+            break;
+    }
+    adjacentTileCoord = ccpAdd(tileCoord,adjacentTileCoord);
+    return adjacentTileCoord;
+}
 
 -(CGPoint) getNextTileCoordWithPath:(NSMutableArray *)path
 {
@@ -282,7 +326,6 @@
     }
     return nextTileCoord;
 }
-              
 
 -(CGPoint) getNextTileCoordWithTileCoord:(CGPoint)tileCoord andDirection:(CharacterDirection)dir
 {
@@ -309,11 +352,6 @@
             break;
     }
     return nextTileLocation;
-}
-
--(void) updateWithDeltaTime:(ccTime)deltaTime andArrayOfGameObjects:(CCArray *)arrayOfGameObjects
-{
-    //OVERLOAD ME
 }
 
 @end

@@ -13,6 +13,10 @@
 @synthesize lastPlayerCoord,lastPlayerDirection,vision,state,turnSuccessRate;
 
 #define kBaseVelocity 40
+#define kSuccessRatePerfect 90
+#define kSuccessRateGood 70
+#define kSuccessRateOkay 40
+#define kSuccessRatePoor 0
 
 -(id)init
 {
@@ -24,7 +28,7 @@
         lastPlayerCoord = ccp(-1, -1);
         lastPlayerDirection = -1;
         state = kStatePatrolling;
-        turnSuccessRate = kSuccessRatePerfect;
+        turnSuccessRate = kMaxSuccessRate;
     }
     return self;
 }
@@ -42,20 +46,21 @@
         case kStatePatrolling: {
             acceleration = 10;
             topSpeed = 50;
-            turnSuccessRate = kSuccessRatePerfect;
+            turnSuccessRate = kMaxSuccessRate;
             break;
         }
         case kStateCautiousPatrolling: {
-            turnSuccessRate = 100.0;
+            turnSuccessRate = kMaxSuccessRate;
             break;
         }
         case kStateCreeping: {
-            turnSuccessRate = 100.0;
+            turnSuccessRate = kMaxSuccessRate;
             break;
         }
         case kStateChasing: {
             acceleration = 40;
             topSpeed = 100;
+            turnSuccessRate = kMinSuccessRate;
         }
         case kStateAlarmed: {
             break;
@@ -68,36 +73,41 @@
 
 -(CharacterTurnAttempt) attemptTurnWithDeltaTime:(ccTime)deltaTime
 {
-    int minValue = MIN(kSuccessRatePerfect,turnSuccessRate);
-    int maxValue = MAX(kSuccessRatePerfect,turnSuccessRate);
     
-    int x = (arc4random() % (maxValue - minValue+1));
-    x = x + minValue;
+    //get a random value between 1 and kSuccessRatePerfect
+    //
+    int minValue = MIN(kMaxSuccessRate,turnSuccessRate);
+    int maxValue = MAX(kMaxSuccessRate,turnSuccessRate);
     
-    if( x > (kSuccessRatePerfect - kTurnAttemptPerfect)) {
+    int successRate = (arc4random() % (maxValue - minValue+1));
+    
+    CCLOG(@"turnSuccessRate: %f",turnSuccessRate);
+    CCLOG(@"success rate: %d",successRate);
+    
+    successRate = successRate + minValue;
+    CharacterTurnAttempt turnAttempt = kTurnAttemptFailed;
+    
+    if( successRate > kSuccessRatePerfect && successRate < kMaxSuccessRate) {
         velocity = velocity + 100 * deltaTime;
-        return kTurnAttemptPerfect;
+        turnAttempt = kTurnAttemptPerfect;
     }
-    else if(x > (kSuccessRatePerfect - kTurnAttemptGood)) {
+    else if(successRate > kSuccessRateGood && successRate < kSuccessRatePerfect) {
         velocity = velocity + 50 * deltaTime;
-        return kTurnAttemptGood;
+        turnAttempt = kTurnAttemptGood;
     }
-    else if(x > (kSuccessRatePerfect - kTurnAttemptOkay)) {
+    else if(successRate > kSuccessRateOkay && successRate < kSuccessRateGood) {
         velocity = velocity + 0 * deltaTime;
-        return kTurnAttemptOkay;
+        turnAttempt = kTurnAttemptOkay;
     }
-    else if(x > (kSuccessRatePerfect - kTurnAttemptPoor)) {
+    else if(successRate > kSuccessRatePoor && successRate < kSuccessRateOkay) {
         velocity = velocity - 50 * deltaTime;
-        return kTurnAttemptPoor;
+        turnAttempt = kTurnAttemptPoor;
     }
-    else if(x > (kSuccessRatePerfect - kTurnAttemptTerrible)) {
-        velocity = velocity - 75 * deltaTime;
-        return kTurnAttemptTerrible;
-    }
-    else {
+    else if(successRate > kMinSuccessRate && successRate < kSuccessRatePoor) {
         velocity = velocity - 100 * deltaTime;
-        return kTurnAttemptFailed;
+        turnAttempt = kTurnAttemptFailed;
     }
+    return  turnAttempt;
 }
 
 -(BOOL) isGameObjectVisible:(GameObject *) gameObject 
@@ -124,10 +134,12 @@
     if (newVelocity > topSpeed) {
         velocity = topSpeed;
     }
+    else if (newVelocity < kBaseVelocity) {
+        velocity = kBaseVelocity;
+    }
     else {
         velocity = newVelocity;
     }
-    
     
     PlayerCar *player = nil;
     CharacterDirection nextDirection = kDirectionNull;

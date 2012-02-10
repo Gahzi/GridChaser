@@ -25,11 +25,12 @@
     if(self = [super init]) {
         attemptedTurnDirection = kDirectionNull;
         velocity = kBaseVelocity;
-        acceleration = 10;
-        topSpeed = 100;
+        acceleration = 40;
+        topSpeed = 200;
         direction = kDirectionRight;
         lastPressedButton = nil;
         isLaneChanging = NO;
+        turnLimit = 3;
     }
     return self;
 }
@@ -66,10 +67,6 @@
         }
         case kTurnAttemptPoor: {
             velocity = velocity - 50 * deltaTime;
-            break;
-        }
-        case kTurnAttemptTerrible: {
-            velocity = velocity - 100 * deltaTime;
             break;
         }
         case kTurnAttemptFailed: {
@@ -186,8 +183,10 @@
     if(targetPath.count > 0) {
         targetTile = [self getNextTileCoordWithPath:targetPath];
     }
-    else if (CGPointEqualToPoint(targetTile, ccp(-1, -1))) {
-        targetTile = [self getNextTileCoordWithTileCoord:self.tileCoordinate andDirection:direction];
+    else {
+        if (!isLaneChanging) {
+            targetTile = [self getNextTileCoordWithTileCoord:self.tileCoordinate andDirection:direction];
+        }
     }
     
     if([mapDelegate isCollidableWithTileCoord:targetTile] && self.state != kStateIdle) {

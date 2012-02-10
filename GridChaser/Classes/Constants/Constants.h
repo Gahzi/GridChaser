@@ -63,17 +63,17 @@ typedef enum {
 //SHERVIN: redesign turn attempt so that it is merged with SuccessRate;
 #pragma TurnAttempt
 typedef enum {
-    kTurnAttemptPerfect = 5,
-    kTurnAttemptGood = 10,
-    kTurnAttemptOkay = 20,
-    kTurnAttemptPoor = 30,
-    kTurnAttemptTerrible = 40,
+    kTurnAttemptPerfect = 17,
+    kTurnAttemptGood = 19,
+    kTurnAttemptOkay = 22,
+    kTurnAttemptPoor = 26,
     kTurnAttemptSuccess,
     kTurnAttemptFailed,
     kTurnNotAttempted
 } CharacterTurnAttempt;
 
-#define kSuccessRatePerfect 100
+#define kMaxSuccessRate 100
+#define kMinSuccessRate 1
 
 #pragma mark -
 #pragma mark CharacterDirection
